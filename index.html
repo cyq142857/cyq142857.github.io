@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>函迹 · FuncTrace</title>
+<link rel="icon" href="img/logo.png">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="entry" id="entryDlg">
+  <h2 class="entry-title">函迹<span class="entry-en">· FuncTrace</span></h2>
+  <div class="entry-sub">点击进入游戏</div>
+</div>
+<div id="debugBar" class="hide">
+  <div class="dbg-head">
+    <span class="dbg-title">🔧 调试</span>
+    <span class="dbg-hint">按 Ctrl+Shift+D 显示 / 隐藏</span>
+    <button class="dbg-exit" id="dbgExitBtn" title="退出调试模式">✕ 退出</button>
+  </div>
+  <div class="dbg-body">
+    <div class="dbg-row">
+      <span class="dbg-label">函数表达式</span>
+      <input id="dbgInput" type="text" placeholder="例如 2*x+3、x^2-1、sin(x)、1.2*|x-2|-1、2*exp(0.15*x)-3" spellcheck="false">
+      <button class="btn btn-primary small" id="dbgApplyBtn">应用</button>
+      <button class="btn btn-ghost small" id="dbgRandomBtn">🎲 随机函数</button>
+    </div>
+    <div class="dbg-row">
+      <span class="dbg-label">模板</span>
+      <button class="btn btn-ghost small" data-tpl="linear">一次</button>
+      <button class="btn btn-ghost small" data-tpl="quad">二次</button>
+      <button class="btn btn-ghost small" data-tpl="abs">绝对值</button>
+      <button class="btn btn-ghost small" data-tpl="cubic">三次</button>
+      <button class="btn btn-ghost small" data-tpl="sine">正弦</button>
+      <button class="btn btn-ghost small" data-tpl="exp">指数</button>
+    </div>
+    <div class="dbg-row">
+      <button class="btn btn-primary small" id="dbgSaveBtn">💾 保存本次调试</button>
+      <button class="btn btn-ghost small" id="dbgListBtn">📋 调试记录 <span class="tab-count" id="dbgCount">0</span></button>
+      <button class="btn btn-danger small" id="dbgClearBtn">🗑 清空记录</button>
+      <button class="btn btn-ghost small" id="dbgExportBtn">⬇ 导出</button>
+      <button class="btn btn-ghost small" id="dbgImportBtn">⬆ 导入</button>
+      <input type="file" id="dbgImportFile" accept=".json,application/json" class="hide">
+      <span class="dbg-status" id="dbgStatus"></span>
+    </div>
+    <div class="dbg-main">
+      <div class="dbg-stage">
+        <div class="dbg-stage-head">
+          <span class="g-zoom" id="dbgZoom">×1.00</span>
+          <div class="dbg-stage-btns">
+            <button class="btn btn-ghost small" id="dbgClearPtsBtn" title="清除画布上放置的所有点">🗑 清空点</button>
+            <button class="btn btn-ghost small" id="dbgResetBtn">⟳ 复位</button>
+          </div>
+        </div>
+        <div class="graph-stage"><canvas id="dbgCanvas"></canvas></div>
+        <div class="graph-hint">点击画布放置点（点中已有点可移除），滚动滑轮缩放</div>
+      </div>
+      <div class="dbg-info">
+        <div class="card"><h3>当前函数</h3><div id="dbgExpr" style="font-family:ui-monospace,Consolas,Menlo,monospace;font-size:13px;font-weight:700;word-break:break-all"></div></div>
+        <div class="card"><h3>放置的点</h3><div id="dbgPoints" style="font-size:12px;line-height:1.9;max-height:230px;overflow:auto"></div></div>
+        <div class="card"><h3>合计得分</h3><div id="dbgScore" style="font-size:26px;font-weight:800;color:var(--accent);font-variant-numeric:tabular-nums"></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="app">
+  <div id="gameView" class="hide">
+  <header>
+    <div class="logo"><img class="logo-img" src="img/logo.png" alt="FuncTrace"><span class="logo-cn">函迹</span><span class="en">· FuncTrace</span><span class="tag">把点放到函数曲线上</span></div>
+    <div class="stats">
+      <div class="chip">局数 <b id="statRound">0</b></div>
+      <div class="chip">累计总分 <b id="statTotal">0</b></div>
+      <div class="chip">历史最高单局 <b id="statBest">0</b></div>
+    </div>
+  </header>
+
+  <nav class="levels" id="levels">
+    <button class="lvl" data-l="easy">入门 <small>一次函数</small></button>
+    <button class="lvl" data-l="normal">进阶 <small>二次 / 绝对值</small></button>
+    <button class="lvl" data-l="hard">专家 <small>三次 / 正弦 / 指数</small></button>
+    <button class="lvl" data-l="mix">混合 <small>全部类型</small></button>
+    <button class="lvl" id="muteBtn" title="声音开关">🔊</button>
+  </nav>
+
+  <main>
+    <section class="board">
+      <div class="formula-banner hide" id="formulaBanner">
+        <span class="fb-label">本题函数</span>
+        <span class="fb-body"><i class="fb-dot" id="fbDot"></i><span id="fbFormula">—</span></span>
+      </div>
+      <div class="stage"><canvas id="cv"></canvas></div>
+    </section>
+    <aside class="panel">
+      <div class="card">
+        <h3>本局信息</h3>
+        <div class="info-row"><span class="k">难度</span><span class="v" id="hintLevel">—</span></div>
+        <div class="info-row"><span class="k">函数类型</span><span class="v" id="hintType">—</span></div>
+        <div class="info-row"><span class="k">剩余时间</span><span class="v" id="timeVal">—</span></div>
+        <div class="timebar"><i id="timeBar"></i></div>
+        <div class="info-row" style="margin-top:8px"><span class="k">已放置点</span><span class="v dots" id="dots">—</span></div>
+      </div>
+      <div class="card">
+        <div class="actions">
+          <button class="btn btn-ghost" id="undoBtn" title="移除最后放置的点">↩ 撤销上一点</button>
+          <button class="btn btn-danger" id="retryBtn" title="重新本局（同一条曲线、重新计时）">⟳ 重试本局</button>
+          <button class="btn btn-primary" id="submitBtn" title="提前提交判定">✓ 提交判定</button>
+          <button class="btn btn-danger" id="exitBtn" title="退出本局，返回主菜单（本关进度不保存）">⏏ 退出本局</button>
+        </div>
+      </div>
+      <div class="card rules">
+        <h3>玩法 & 计分</h3>
+        每局在顶部醒目位置给出<b>函数表达式</b>，限时内在坐标系上放置规定数量的点，让它们尽量落在曲线上。<br>
+        · 单点得分 = (100/N) × max(0, 1 − 最近距离/4)<br>
+        · 时间奖励 = 10 × 剩余时间占比<br>
+        · 距离越近分越高，本局满分 <b>100</b><br>
+        提示：点中已有小点可移除，点空白处新增。
+      </div>
+    </aside>
+  </main>
+  </div>
+</div>
+
+<div id="homeView" class="home-page">
+  <div class="home-card">
+    <div class="home-hero">
+      <h2 class="home-title">函迹<span class="hero-en">· FuncTrace</span></h2>
+      <div class="hero-divider"></div>
+      <div class="sub">以点描线，读懂函数；以动趋安，避开险区。</div>
+    </div>
+    <div class="tabs">
+      <button class="tab active" data-tab="play">点之描函</button>
+      <button class="tab" data-tab="axis">点之趋安</button>
+      <button class="tab" data-tab="battle">点之对战</button>
+      <button class="tab" data-tab="g24">24点挑战</button>
+      <button class="tab" data-tab="history">历史记录 <span class="tab-count" id="histCount">0</span></button>
+      <button class="tab" data-tab="settings">设置</button>
+    </div>
+    <div id="tabPlay">
+      <div class="axis-intro">
+        <h3>点之描函 <span class="hero-en">Function Trace</span></h3>
+        <div class="hero-divider"></div>
+        <div class="sub">每局在顶部给出一个函数表达式，限时内在坐标系上放置你认为位于曲线上的点，系统按每个点到真实曲线的最近距离打分。</div>
+      </div>
+      <div class="mgrid" id="mgrid"></div>
+      <div class="rules">
+        <b>怎么玩：</b><br>
+        ① 选择难度开始，顶部醒目位置给出本题函数表达式<br>
+        ② 倒计时结束前放置规定数量的点，尽量落在曲线上（点空白放点，点已有小点可移除）<br>
+        ③ 放满点数自动判定，也可随时点「提交判定」<br>
+        ④ 判定后先在坐标系展示真实曲线（1 秒），再给出每个点的最近距离与得分
+      </div>
+    </div>
+    <div id="tabAxis" class="hide">
+      <div class="axis-intro">
+        <h3>点之趋安 <span class="hero-en">Axis Dodge</span></h3>
+        <div class="hero-divider"></div>
+        <div class="sub">看到算式，快速心算答案。数轴上的「危险区」不会显示——倒计时结束前，把点移到正确的位置：避开险区要躲开危险区，落入靶心要停进靶心。判断失误，激光落下，出局。</div>
+      </div>
+      <div class="mgrid" id="axisMgrid"></div>
+      <div class="rules">
+        <b>怎么玩：</b><br>
+        ① 点难度卡片，在弹窗中选好规则、拖好危险区半径（±1~2），进入后上方给出一道算式<br>
+        ② 用 ← → 方向键移动数轴上的你（每步 0.1 格，可长按连续移动）<br>
+        ③ 倒计时结束前把点放到正确位置：避开险区＝移出危险区；落入靶心＝停进危险区<br>
+        ④ 判断正确则休息几秒进入下一轮；判断失误则本局结束，记录你坚持的轮数
+      </div>
+      <div id="axisGame" class="hide">
+        <div class="axis-hud">
+          <span class="ah-round" id="axisRound">第 1 轮</span>
+          <span class="ah-level" id="axisLevel">入门</span>
+          <span class="ah-timer" id="axisTimer">6.0s</span>
+          <span class="ah-rule-tag" id="axisRuleTag">❌ 避开险区</span>
+          <span class="ah-score hide" id="axisScore"></span>
+          <span class="ah-radius" title="本局锁定半径，开局时已确定">±<b id="axisRoundRadius">1.00</b></span>
+        </div>
+        <div class="axis-formula" id="axisFormula">3 × 4 + 2 = ?</div>
+        <canvas id="axisCanvas" class="axis-canvas" width="720" height="300"></canvas>
+        <div class="axis-pos">你的位置：x = <b id="axisPos">0</b></div>
+        <div class="axis-tip">← → 方向键移动</div>
+        <div class="axis-btns">
+          <button class="btn btn-ghost" id="axisQuitBtn">✕ 退出本局</button>
+        </div>
+      </div>
+    </div>
+    <div id="tabBattle" class="hide">
+      <div id="battleIntroWrap">
+        <div class="axis-intro">
+          <h3>点之对战 <span class="hero-en">Function Battle</span></h3>
+          <div class="hero-divider"></div>
+          <div class="sub">在开放世界里与算式怪物交战：每只怪物的血量是隐藏的，初始等于它的式子。用武器把它的值变到 0 附近（±0.005）即击杀——血量正则红、负则蓝。小心怪物攻击，撑得越久记录越亮眼！</div>
+        </div>
+        <div class="battle-modes" id="battleModes">
+          <button class="bm active" data-mode="classic"><b>经典模式</b><small>小怪 + 每 5 分钟 BOSS</small><span class="bm-start">开始</span></button>
+          <button class="bm" data-mode="boss"><b>BOSS 模式</b><small>无小怪 · 每 1 分钟 BOSS（开局即来）</small><span class="bm-start">开始</span></button>
+          <button class="bm" data-mode="nohurt"><b>无伤挑战</b><small>一血到底 · 其余同经典</small><span class="bm-start">开始</span></button>
+          <button class="bm" data-mode="custom"><b>自定义模式</b><small>自调血包/小怪/BOSS/生命/能量</small><span class="bm-start">开始</span></button>
+        </div>
+        <div class="rules">
+          <b>怎么玩：</b><br>
+          ① 鼠标控制朝向（始终面向光标），WASD / 方向键移动；左键发射当前武器，空格暂停，E 放墙（耗 5 能量，冷却 10 秒，5 秒后消失，最多 3 面）<br>
+          ② 滚轮或数字键 1~4 切换武器：<b>-1</b> 减一 · <b>√</b> 开方（需≥0）· <b>÷2</b> 折半 · <b>×(-1)</b> 取反<br>
+          ③ 怪物血量∈[-0.005, 0.005] 即死；怪物会追击并攻击你，每次 -5 血<br>
+          ④ 每 10 秒地图刷新血包（+10~15 血）；血量归零本局结束，历史记录最长坚持时长<br>
+          ⑤ 射击消耗能量：-1 耗 1 · √ 耗 3 · ÷2 耗 2 · ×(-1) 免费；能量≤5 时等待 5 秒回满<br>
+          ⑥ 经典模式每 5 分钟刷一个 BOSS；BOSS 模式无小怪、每 1 分钟刷一个（开局即来）。BOSS 血量 500~1500 可见、攻击更痛，击破掉 5~10 个分散血包<br>
+          ⑦ 无伤挑战一血到底（其余同经典）；自定义模式可自调血包/小怪/BOSS 频率与生命、能量上限<br>
+          ⑧ 视野外的小怪/BOSS 会在屏幕边缘显示指向标（红=正数怪 · 蓝=负数怪 · 紫=BOSS）
+        </div>
+      </div>
+      <div id="battleGame" class="hide">
+        <div class="axis-hud battle-hud">
+          <span class="ah-round" id="btHP">❤ 100</span>
+          <span class="bt-ewrap" title="能量">⚡<span class="bt-ebar"><i id="btEBar"></i></span><b id="btEnergy">100</b></span>
+          <span class="ah-timer" id="btTime">00:00</span>
+          <span class="ah-rule-tag" id="btKills">☠ 0</span>
+          <button class="btn btn-ghost small" id="btFullBtn">⛶ 全屏</button>
+        </div>
+        <div class="battle-stage" id="battleStage">
+          <div class="battle-hud-fs" id="battleHudFs">
+            <span class="ah-round" id="btHPFs">❤ 100</span>
+            <div class="bt-bars">
+              <div class="bt-hpbar"><i id="btHPBarFs"></i></div>
+              <div class="bt-ebar"><i id="btEBarFs"></i></div>
+            </div>
+            <span class="ah-rule-tag" id="btEnergyFs">⚡ 100</span>
+            <span class="ah-timer" id="btTimeFs">00:00</span>
+            <span class="ah-rule-tag" id="btKillsFs">☠ 0</span>
+          </div>
+          <canvas id="battleCanvas" width="880" height="560"></canvas>
+          <div class="battle-weapons" id="battleWeapons">
+            <button class="bw active" data-w="0">-1</button>
+            <button class="bw" data-w="1">√</button>
+            <button class="bw" data-w="2">÷2</button>
+            <button class="bw" data-w="3">×(-1)</button>
+          </div>
+        </div>
+        <div class="axis-tip">鼠标 瞄准 · 左键 射击 · 空格 暂停 · 1~4 切武器（滚轮仅全屏） · E 放墙(5能·10s) · ⛶ 全屏</div>
+        <div class="axis-btns">
+          <button class="btn btn-ghost" id="battleQuitBtn">✕ 退出本局</button>
+        </div>
+      </div>
+    </div>
+    <div id="tabG24" class="hide">
+      <div id="g24Intro">
+        <div class="axis-intro">
+          <h3>24点挑战 <span class="hero-en">Make 24</span></h3>
+          <div class="hero-divider"></div>
+          <div class="sub">发 4 张牌（A=1，J=11，Q=12，K=13），点选两张牌再选运算符合并；√ 与 ! 只需一张牌。合成的新牌会保留分数 / 根式形式，直到只剩一张牌且值等于 24——每局保证有解！</div>
+        </div>
+        <div class="battle-modes g24-modes" id="g24Modes">
+          <button class="bm active" data-g24mode="std"><b>标准</b><small>四则 + √ + ! · 保证有解</small><span class="bm-start">开始</span></button>
+          <button class="bm" data-g24mode="basic"><b>纯四则</b><small>仅 + − × ÷ · 保证有解</small><span class="bm-start">开始</span></button>
+        </div>
+        <div class="rules">
+          <b>怎么玩：</b><br>
+          ① 点「开始」发 4 张牌（A=1 · J=11 · Q=12 · K=13），每局保证能合成 24<br>
+          ② 依次点选 数字1 → 运算符 → 数字2 合并（＋ － × ÷）；√ 与 ! 只需 数字1<br>
+          ③ 牌面直接显示运算结果；分式 / 根式用 LaTeX（如 7/5、√2）排版，可继续参与运算<br>
+          ④ 数字 > 24 无法阶乘；n! ≤ 362880 直接显示结果，否则带 ! 符号（可化简时自动化简）<br>
+          ⑤ 牌数剩 1 且值 = 24 即解出胜利；「撤销」回退上一步，记录最快解出用时
+        </div>
+      </div>
+      <div id="g24Game" class="hide">
+        <div class="axis-hud">
+          <span class="ah-round" id="g24Step">第 1 步</span>
+          <span class="ah-timer" id="g24Time">00:00</span>
+          <span class="ah-rule-tag" id="g24Left">4 张牌</span>
+        </div>
+        <div class="g24-board">
+          <div class="g24-cards" id="g24Cards"></div>
+          <div class="g24-ops" id="g24Ops">
+            <button class="g24-op" data-op="+">＋</button>
+            <button class="g24-op" data-op="-">－</button>
+            <button class="g24-op" data-op="*">×</button>
+            <button class="g24-op" data-op="/">÷</button>
+            <button class="g24-op" data-op="sqrt">√</button>
+            <button class="g24-op" data-op="!">!</button>
+          </div>
+          <div class="g24-tip" id="g24Tip">数字1 → 运算符 → 数字2（√ 与 ! 只需数字1）</div>
+        </div>
+        <div class="axis-btns">
+          <button class="btn btn-ghost" id="g24UndoBtn">↩ 撤销</button>
+          <button class="btn btn-ghost" id="g24RestartBtn">🔄 重新发牌</button>
+          <button class="btn btn-ghost" id="g24QuitBtn">✕ 退出本局</button>
+        </div>
+        <div class="g24-log" id="g24Log"></div>
+      </div>
+    </div>
+    <div id="tabHistory" class="hide">
+      <div class="hist-stats" id="histStats"></div>
+      <div class="hist-actions">
+        <button class="btn btn-ghost small" id="exportBtn" title="把历史记录下载为 JSON 文件备份">⬇ 导出记录</button>
+        <button class="btn btn-ghost small" id="importBtn" title="从 JSON 文件恢复历史记录">⬆ 导入记录</button>
+        <button class="btn btn-danger small" id="clearHistBtn">🗑 清空历史</button>
+        <input type="file" id="importFile" accept=".json,application/json" class="hide">
+      </div>
+      <div class="hist-hint">提示：导出 JSON 文件可备份记录；清除数据或换设备后，用「导入记录」即可恢复。</div>
+      <div class="hist-list" id="histList"></div>
+    </div>
+    <div id="tabSettings" class="hide">
+      <div class="card">
+        <h3>外观</h3>
+        <div class="set-row">
+          <div>
+            <div class="set-name">深色模式</div>
+            <div class="set-desc">切换浅色 / 深色界面主题，选择后立即生效并自动保存</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="darkToggle">
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+      <div class="card">
+        <h3>声音</h3>
+        <div class="set-row">
+          <div>
+            <div class="set-name">背景音乐</div>
+            <div class="set-desc">播放 / 暂停背景音乐，选择后自动保存</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="bgmToggle">
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="set-row">
+          <div>
+            <div class="set-name">音效</div>
+            <div class="set-desc">按钮点击等游戏音效，选择后自动保存</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="sfxToggle">
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+      <div class="card">
+        <h3>数据说明</h3>
+        <div class="set-row">
+          <div>
+            <div class="set-name">本地存储</div>
+            <div class="set-desc">历史记录、调试记录、最高分与主题设置均保存在本机浏览器 localStorage 中，可用各页面的导入 / 导出功能备份迁移</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="overlay hide" id="result">
+  <div class="modal">
+    <h2 id="rTitle">判定结果</h2>
+    <div class="sub" id="rRound"></div>
+    <div class="score-wrap">
+      <div class="ring">
+        <svg width="120" height="120" viewBox="0 0 120 120">
+          <circle cx="60" cy="60" r="52" fill="none" stroke="#eef0f6" stroke-width="12"/>
+          <circle id="ringBar" cx="60" cy="60" r="52" fill="none" stroke="url(#rg)" stroke-width="12" stroke-linecap="round" stroke-dasharray="326.73" stroke-dashoffset="326.73" style="transition:stroke-dashoffset .05s linear"/>
+          <defs><linearGradient id="rg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4f46e5"/><stop offset="1" stop-color="#8b5cf6"/></linearGradient></defs>
+        </svg>
+        <div class="num"><b id="rNum">0</b><span>满分 100</span></div>
+      </div>
+      <div style="flex:1">
+        <div class="formula"><span class="sw" id="rSwatch"></span><span id="rFormula"></span></div>
+        <div class="badge b-perfect hide" id="rPerfect" style="margin-bottom:8px">🎉 完美命中！</div>
+        <div id="rBonus" style="font-size:13px;color:var(--sub)"></div>
+      </div>
+    </div>
+    <div id="rTableWrap"></div>
+    <div class="rowsum" id="rSum"></div>
+    <div class="btns">
+      <button class="btn btn-ghost" id="retryBtn2">⟳ 重试本局</button>
+      <button class="btn btn-ghost hide" id="histGraphBtn" title="查看该函数的图像">📉 查看图像</button>
+      <button class="btn btn-ghost hide" id="histCloseBtn">关闭</button>
+      <button class="btn btn-primary" id="nextBtn">下一局 →</button>
+    </div>
+    <button class="link-btn" id="menuBtn">返回主菜单</button>
+  </div>
+</div>
+
+<div class="overlay hide" id="axisResult">
+  <div class="modal">
+    <h2 id="axisRTitle">被淘汰！</h2>
+    <div class="sub" id="axisRSub"></div>
+    <div class="axis-r-info" id="axisRInfo"></div>
+    <div class="btns">
+      <button class="btn btn-primary" id="axisRetryBtn">⟳ 再来一局</button>
+      <button class="btn btn-ghost" id="axisMenuBtn">返回主菜单</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay hide" id="battleResult">
+  <div class="modal">
+    <h2>💀 战败阵亡</h2>
+    <div class="sub">你的算式之旅到此为止</div>
+    <div class="axis-r-info" id="btRInfo"></div>
+    <div class="btns">
+      <button class="btn btn-primary" id="btRetryBtn">⟳ 再来一局</button>
+      <button class="btn btn-ghost" id="btMenuBtn">返回主菜单</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay hide" id="g24Result">
+  <div class="modal">
+    <h2>🎉 合成 24！</h2>
+    <div class="sub">四张牌被你合成了 24</div>
+    <div class="axis-r-info" id="g24RInfo"></div>
+    <div class="btns">
+      <button class="btn btn-primary" id="g24AgainBtn">⟳ 再来一局</button>
+      <button class="btn btn-ghost" id="g24BackBtn">返回主菜单</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay hide" id="customDlg">
+  <div class="modal">
+    <h2>🎛 自定义模式</h2>
+    <div class="sub">自选规则后开局（其余同经典模式）</div>
+    <div class="cust-rows">
+      <div class="cust-row">
+        <div class="cust-info"><b>血包生成频率</b><small>每 N 秒刷一个血包（+10~15 血）</small></div>
+        <input type="range" id="custPack" min="5" max="30" step="1">
+        <span class="cust-val" id="custPackV">10s</span>
+      </div>
+      <div class="cust-row">
+        <div class="cust-info"><b>小怪生成频率</b><small>每 N 秒刷一只小怪</small></div>
+        <input type="range" id="custSpawn" min="1" max="15" step="1">
+        <span class="cust-val" id="custSpawnV">4s</span>
+      </div>
+      <div class="cust-row">
+        <div class="cust-info"><b>BOSS 生成频率</b><small>每 N 秒刷一个 BOSS（500~1500 血）</small></div>
+        <input type="range" id="custBoss" min="30" max="600" step="10">
+        <span class="cust-val" id="custBossV">300s</span>
+      </div>
+      <div class="cust-row">
+        <div class="cust-info"><b>生命上限</b><small>玩家初始与上限血量</small></div>
+        <input type="range" id="custHp" min="1" max="500" step="1">
+        <span class="cust-val" id="custHpV">100</span>
+      </div>
+      <div class="cust-row">
+        <div class="cust-info"><b>能量上限</b><small>武器消耗与回能按此上限</small></div>
+        <input type="range" id="custEnergy" min="50" max="500" step="10">
+        <span class="cust-val" id="custEnergyV">250</span>
+      </div>
+    </div>
+    <div class="btns">
+      <button class="btn btn-ghost" id="custCancelBtn">取消</button>
+      <button class="btn btn-primary" id="custStartBtn">🎮 开始游戏</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay hide" id="graphDlg">
+  <div class="modal graph-modal">
+    <div class="graph-head">
+      <h2>📉 历史图像 · 第 <span id="gRound">0</span> 局</h2>
+      <div class="graph-tools">
+        <span class="g-zoom" id="gZoom">×1.00</span>
+        <button class="btn btn-ghost small" id="gResetBtn" title="恢复为完整视图">⟳ 复位</button>
+        <button class="btn btn-ghost small" id="graphCloseBtn">关闭</button>
+      </div>
+    </div>
+    <div class="formula"><span class="sw" id="gSwatch"></span><span id="gFormula"></span></div>
+    <div class="graph-stage"><canvas id="graphCanvas"></canvas></div>
+    <div class="graph-hint">滚动滑轮缩放视图（以光标为中心），点「复位」回到完整视图</div>
+  </div>
+</div>
+
+<div class="overlay hide" id="axisSetupDlg">
+  <div class="modal" style="max-width:460px">
+    <h2 id="axisSetupTitle">选择难度</h2>
+    <p class="sub" id="axisSetupLevel">入门</p>
+    <div class="axis-setup-dlg">
+      <div class="as-row">
+        <span class="as-label">规则</span>
+        <span class="ah-rule" id="axisRule">
+          <button class="rule-btn active" data-rule="avoid">避开险区</button>
+          <button class="rule-btn" data-rule="enter">落入靶心</button>
+        </span>
+      </div>
+      <div class="as-row">
+        <span class="as-label">危险区半径</span>
+        <span class="ah-radius" title="开局时确定，进入后本局不变">±<b id="axisRadiusVal">1.00</b><input type="range" id="axisRadius" min="1" max="2" step="0.05" value="1"></span>
+      </div>
+    </div>
+    <div class="btns">
+      <button class="btn btn-primary" id="axisStartBtn">开始</button>
+      <button class="btn btn-ghost" id="axisCancelBtn">取消</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay hide" id="timeDlg">
+  <div class="modal" style="max-width:460px">
+    <h2>选择时间</h2>
+    <p class="sub">为「<b id="timeDlgLevel">—</b>」难度挑选时限，时间越短越有挑战。</p>
+    <div class="tier-grid" id="tierGrid"></div>
+    <div class="btns"><button class="btn btn-ghost" id="timeCancel">取消</button></div>
+  </div>
+</div>
+
+<div class="overlay hide" id="dbgListDlg">
+  <div class="modal home-modal">
+    <div class="graph-head">
+      <h2>📋 调试记录</h2>
+      <button class="btn btn-ghost small" id="dbgListClose">关闭</button>
+    </div>
+    <div class="hist-list" id="dbgList"></div>
+  </div>
+</div>
+
+<div class="overlay hide" id="confirmDlg">
+  <div class="modal confirm-modal">
+    <h2>⏏ 退出本局？</h2>
+    <div class="sub">是否退出？这将无法保存这一关的进度。</div>
+    <div class="btns">
+      <button class="btn btn-ghost" id="confirmNo">继续游戏</button>
+      <button class="btn btn-danger" id="confirmYes">确认退出</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+<audio id="bgm" src="bgm.mp3" loop preload="auto"></audio>
+<audio id="clickSnd" src="click.mp3" preload="auto"></audio>
+<script src="js/app.js"></script>
+</body>
+</html>
