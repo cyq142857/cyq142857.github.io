@@ -167,7 +167,7 @@ score = round( min(100, sum + bonus) × 10 ) / 10
 
 ## 8. 调试模式
 
-- 快捷键 **Ctrl + Shift + D**，**仅主页（homeView 可见时）**可开启。
+- 快捷键 **Ctrl + Shift + D**，**仅主页（homeView 可见时）** 可开启。
 - 功能：表达式输入（`preprocessExpr`/`makeFn` 解析，支持 `sin/cos/tan/abs/exp/sqrt/log/⌊⌋/round`、`^` 幂、`|x|` 绝对值、`PI/E/e` 常数）、图像上放置点、缩放、记录增删改查、导入导出。
 - 调试评分（`evalDebug`）：单点公式与正式一致（`R=4, GAMMA=2`，`M = 100/点数`），
   总分 `= clamp(sum, 0, 100)`（**无时间奖励**，因调试不计正式分）。
