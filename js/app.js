@@ -26,9 +26,10 @@ const post=(p,b)=>api(p,{method:'POST',headers:{'Content-Type':'application/json
 const del=p=>api(p,{method:'DELETE'});
 
 /* ================= 音效 ================= */
-let actx=null,muted=false;
+let actx=null,muted=false,sfxOn=true;
+try{sfxOn=localStorage.getItem('fn-sfx')!=='off';}catch(e){}
 function beep(f,d,type,g){
-  if(muted)return;
+  if(muted||!sfxOn)return;
   try{
     actx=actx||new (window.AudioContext||window.webkitAudioContext)();
     if(actx.state==='suspended')actx.resume();
@@ -554,17 +555,34 @@ async function renderHistory(){
   history=r.list||[];
   const n=history.length;
   $('#histCount').textContent=n;
-  const avg=n?Math.round(history.reduce((a,h)=>a+h.score,0)/n*10)/10:0;
-  const mx=n?Math.max.apply(null,history.map(h=>h.score)):0;
-  const full=n?history.filter(h=>h.score>=99.5).length:0;
+  const fnHist=history.filter(h=>h.mode!=='axis');
+  const nFn=fnHist.length;
+  const avg=nFn?Math.round(fnHist.reduce((a,h)=>a+h.score,0)/nFn*10)/10:0;
+  const mx=nFn?Math.max.apply(null,fnHist.map(h=>h.score)):0;
+  const full=nFn?fnHist.filter(h=>h.score>=99.5).length:0;
+  const axisHist=history.filter(h=>h.mode==='axis');
+  const maxRounds=axisHist.length?Math.max.apply(null,axisHist.map(h=>h.rounds||h.score)):0;
+  const enterHist=axisHist.filter(h=>h.rule==='enter'&&h.avgScore!=null);
+  const bestEnter=enterHist.length?Math.max.apply(null,enterHist.map(h=>h.avgScore)):0;
   $('#histStats').innerHTML=
     '<div class="chip">场次 <b>'+n+'</b></div>'+
     '<div class="chip">平均分 <b>'+fmt(avg)+'</b></div>'+
     '<div class="chip">最高分 <b>'+fmt(mx)+'</b></div>'+
-    '<div class="chip">满分次数 <b>'+full+'</b></div>';
+    '<div class="chip">满分次数 <b>'+full+'</b></div>'+
+    '<div class="chip" title="点之趋安最高坚持轮数">趋安最佳 <b>'+maxRounds+'</b></div>'+
+    '<div class="chip" title="落入靶心模式最高评分">落靶最高 <b>'+fmt(bestEnter)+'</b></div>';
   const list=$('#histList');
   if(!n){ list.innerHTML='<div class="empty">还没有对局记录，先去开始游戏玩一局吧！</div>'; return; }
   list.innerHTML=history.map((h,i)=>{
+    if(h.mode==='axis'){
+      return '<div class="hrow">'+
+        '<div class="hscore"><b>'+fmt(h.score)+'</b><span>轮</span></div>'+
+        '<div class="hmain"><div class="hformula"><i style="background:#db2777"></i>'+escapeHtml(h.formula)+'</div>'+
+        '<div class="hmeta">点之趋安 · '+h.levelName+' · 坚持 '+h.rounds+' 轮'+(h.avgScore!=null?(' · 评分 '+h.avgScore):'')+' · '+timeStr(h.ts)+'</div></div>'+
+        '<div><span class="badge '+(h.survived?'b-ok':'b-out')+'">'+(h.survived?'主动退出':'被淘汰')+'</span></div>'+
+        '<div class="hbtns"><button class="hbtn" data-i="'+i+'" data-act="axisdetail">详情</button></div>'+
+      '</div>';
+    }
     const r=rating(h.score);
     return '<div class="hrow">'+
       '<div class="hscore"><b>'+fmt(h.score)+'</b><span>分</span></div>'+
@@ -622,7 +640,7 @@ async function applyDebugExpr(){
 }
 async function evaluateDebugPoints(){
   if(!dbg.valid)return;
-  const r=await post('/api/debug/evaluate',{expr:dbg.expr,points:dbg.points});
+  const r=await post('/api/debug/evaluate',{expr:dbg.expr,points:dbg.points,view:dbg.baseView||dbg.view});
   if(!r||!r.ok)return;
   if(r.valid){ dbg.rows=r.rows; dbg.score=r.score; }
   updateDbgPanel();drawDebug();
@@ -781,10 +799,63 @@ document.querySelectorAll('.lvl[data-l]').forEach(b=>{
 });
 $('#timeCancel').addEventListener('click',closeTimeDlg);
 $('#timeDlg').addEventListener('click',e=>{ if(e.target===$('#timeDlg'))closeTimeDlg(); });
+let bgmOn=true;
+try{bgmOn=localStorage.getItem('fn-bgm')!=='off';}catch(e){}
+function bgmPlay(){ const b=document.getElementById('bgm'); if(b) b.play().catch(()=>{}); }
+function bgmPause(){ const b=document.getElementById('bgm'); if(b) b.pause(); }
 $('#muteBtn').addEventListener('click',()=>{
   muted=!muted;
   $('#muteBtn').textContent=muted?'🔇':'🔊';
+  if(muted)bgmPause(); else if(bgmOn)bgmPlay();
 });
+(function initBgm(){
+  const b=document.getElementById('bgm');
+  if(!b)return;
+  try{b.volume=0.5;}catch(e){}
+  const t=document.getElementById('bgmToggle');
+  if(t){
+    t.checked=bgmOn;
+    t.addEventListener('change',()=>{
+      bgmOn=t.checked;
+      try{localStorage.setItem('fn-bgm',bgmOn?'on':'off');}catch(e){}
+      if(bgmOn){ if(!muted)bgmPlay(); } else bgmPause();
+    });
+  }
+  const kick=()=>{
+    if(!muted&&bgmOn){
+      const b=document.getElementById('bgm');
+      if(b&&b.paused)bgmPlay();
+    }
+  };
+  document.addEventListener('pointerdown',kick);
+  document.addEventListener('keydown',kick);
+  if(!muted&&bgmOn)bgmPlay();
+  const c=document.getElementById('clickSnd');
+  if(c){
+    try{c.volume=0.85;}catch(e){}
+    document.addEventListener('click',()=>{
+      if(muted||!sfxOn)return;
+      try{c.currentTime=0;c.play();}catch(e){}
+    },true);
+  }
+  const st=document.getElementById('sfxToggle');
+  if(st){
+    st.checked=sfxOn;
+    st.addEventListener('change',()=>{
+      sfxOn=st.checked;
+      try{localStorage.setItem('fn-sfx',sfxOn?'on':'off');}catch(e){}
+    });
+  }
+})();
+const entryDlg=document.getElementById('entryDlg');
+if(entryDlg){
+  entryDlg.addEventListener('click',()=>{
+    if(entryDlg.classList.contains('hide'))return;
+    entryDlg.classList.add('enter');
+    if(!muted&&bgmOn)bgmPlay();
+    setTimeout(()=>entryDlg.classList.add('hide'),520);
+  });
+}
 $('#undoBtn').addEventListener('click',()=>{
   if(!state.points.length||state.submitted)return;
   state.points.pop();sfx.remove();updateHUD();draw();
@@ -815,10 +886,14 @@ document.querySelectorAll('.tab').forEach(b=>{
   b.addEventListener('click',()=>{
     document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
     b.classList.add('active');
-    $('#tabPlay').classList.toggle('hide',b.dataset.tab!=='play');
-    $('#tabHistory').classList.toggle('hide',b.dataset.tab!=='history');
-    $('#tabSettings').classList.toggle('hide',b.dataset.tab!=='settings');
-    if(b.dataset.tab==='history')renderHistory();
+    const tab=b.dataset.tab;
+    $('#tabPlay').classList.toggle('hide',tab!=='play');
+    $('#tabHistory').classList.toggle('hide',tab!=='history');
+    $('#tabAxis').classList.toggle('hide',tab!=='axis');
+    $('#tabSettings').classList.toggle('hide',tab!=='settings');
+    if(tab==='history')renderHistory();
+    if(tab==='axis'){ renderAxisMgrid(); $('#axisSetupDlg').classList.add('hide'); }
+    if(tab!=='axis')exitAxis();
   });
 });
 $('#darkToggle').addEventListener('change',()=>{
@@ -893,7 +968,9 @@ $('#histList').addEventListener('click',e=>{
   if(!b)return;
   const h=history[Number(b.dataset.i)];
   if(!h)return;
-  if(b.dataset.act==='replay'){
+  if(b.dataset.act==='axisdetail'){
+    openAxisDetail(h);
+  }else if(b.dataset.act==='replay'){
     replayRecipe(h);
   }else{
     currentHistEntry=h;
@@ -1029,4 +1106,333 @@ updateHUD();
   await renderHistory();
   await updateDbgCount();
 })();
+
+/* ================= 点之趋安模式（Axis Dodge） ================= */
+const AXIS_LEVELS={
+  easy:{key:'easy',name:'入门',desc:'加减法',wait:6,rest:3},
+  normal:{key:'normal',name:'进阶',desc:'加減乘',wait:5,rest:3},
+  hard:{key:'hard',name:'专家',desc:'括号 · √ · ∛ · log',wait:4,rest:3},
+  mix:{key:'mix',name:'混合',desc:'全部综合',wait:4,rest:3}
+};
+const AXMIN=-8, AXMAX=8, AX_RES_MIN=-8, AX_RES_MAX=8;
+const axisState={active:false,loopOn:false,level:null,round:0,res:0,formula:'',playerX:0,moveDir:0,lastMove:0,timeLeft:0,timerId:null,restId:null,phase:'idle',radius:1,roundRadius:1,marks:null,laserUntil:0,roundsData:[],rule:'avoid',scoreSum:0,scoreCount:0};
+function iRand(a,b){ return a+Math.floor(Math.random()*(b-a+1)); }
+function genAxisExpr(levelKey){
+  for(let i=0;i<300;i++){
+    let a,b,c,res,formula;
+    if(levelKey==='easy'){
+      a=iRand(1,10); b=iRand(1,10); const op=iRand(0,1)?'+':'−';
+      res=op==='+'?a+b:a-b; formula=a+' '+op+' '+b+' = ?';
+    }else if(levelKey==='normal'){
+      if(iRand(0,1)===0){ a=iRand(2,6); b=iRand(2,6); c=iRand(1,5); const op=iRand(0,1)?'+':'−';
+        res=a*b+(op==='+'?c:-c); formula=a+' × '+b+' '+(op==='+'?'+':'−')+' '+c+' = ?';
+      }else{ a=iRand(-5,5); b=iRand(2,4); c=iRand(2,4); res=a+b*c; formula=a+' + '+b+' × '+c+' = ?'; }
+    }else if(levelKey==='hard'){
+      const k=iRand(0,5);
+      if(k===0){ a=iRand(1,5); b=iRand(1,5); c=iRand(2,5); res=(a+b)*c; formula='('+a+' + '+b+') × '+c+' = ?'; }
+      else if(k===1){ a=iRand(2,6); b=iRand(2,6); c=iRand(1,5); res=a*b-c; formula=a+' × '+b+' − '+c+' = ?'; }
+      else if(k===2){ a=iRand(2,30); b=iRand(-4,4); res=Math.sqrt(a)+b; formula='√('+a+') '+(b<0?'−':'+')+' '+Math.abs(b)+' = ?'; }
+      else if(k===3){ a=iRand(2,30); b=iRand(-4,4); res=Math.cbrt(a)+b; formula='∛('+a+') '+(b<0?'−':'+')+' '+Math.abs(b)+' = ?'; }
+      else{ a=iRand(2,32); b=iRand(-3,3); res=Math.log2(a)+b; formula='log₂('+a+') '+(b<0?'−':'+')+' '+Math.abs(b)+' = ?'; }
+    }else{
+      const t=iRand(0,9);
+      if(t===0){ a=iRand(1,10); b=iRand(1,10); const op=iRand(0,1)?'+':'−'; res=op==='+'?a+b:a-b; formula=a+' '+op+' '+b+' = ?'; }
+      else if(t===1){ a=iRand(2,6); b=iRand(2,6); c=iRand(1,5); res=a*b+c; formula=a+' × '+b+' + '+c+' = ?'; }
+      else if(t===2){ a=iRand(-5,5); b=iRand(2,4); c=iRand(2,4); res=a+b*c; formula=a+' + '+b+' × '+c+' = ?'; }
+      else if(t===3){ a=iRand(1,5); b=iRand(1,5); c=iRand(2,5); res=(a+b)*c; formula='('+a+' + '+b+') × '+c+' = ?'; }
+      else if(t===4){ a=iRand(2,6); b=iRand(2,6); c=iRand(1,5); res=a*b-c; formula=a+' × '+b+' − '+c+' = ?'; }
+      else if(t===5){ a=iRand(2,30); b=iRand(-4,4); res=Math.sqrt(a)+b; formula='√('+a+') '+(b<0?'−':'+')+' '+Math.abs(b)+' = ?'; }
+      else if(t===6||t===7){ a=iRand(2,32); b=iRand(-3,3); res=Math.log2(a)+b; formula='log₂('+a+') '+(b<0?'−':'+')+' '+Math.abs(b)+' = ?'; }
+      else if(t===8){ const sq=iRand(2,4); a=iRand(1,2); b=sq*sq; c=iRand(0,4); res=a*sq-c; formula=a+' × √('+b+') − '+c+' = ?'; }
+      else{ a=iRand(2,30); b=iRand(-4,4); res=Math.cbrt(a)+b; formula='∛('+a+') '+(b<0?'−':'+')+' '+Math.abs(b)+' = ?'; }
+    }
+    if(res>=AX_RES_MIN && res<=AX_RES_MAX){
+      if(res!==0 && Math.random()<0.45){
+        res=-res;
+        formula='−('+formula.slice(0,-4)+') = ?';
+      }
+      return {formula:formula,res:res};
+    }
+  }
+  return {formula:'3 + 2 = ?',res:5};
+}
+let pendingAxisLevel='easy';
+function renderAxisMgrid(){
+  const grid=$('#axisMgrid'); if(!grid)return; grid.innerHTML='';
+  Object.values(AXIS_LEVELS).forEach(L=>{
+    const card=document.createElement('div');
+    card.className='mcard'; card.dataset.l=L.key;
+    card.innerHTML='<h4>'+L.name+'</h4><p>'+L.desc+'</p><span class="tag">等待 '+L.wait+'s</span>';
+    card.addEventListener('click',()=>{
+      pendingAxisLevel=L.key;
+      $('#axisSetupTitle').textContent='点之趋安 · '+L.name;
+      $('#axisSetupLevel').textContent=L.desc+' · 等待 '+L.wait+'s';
+      document.querySelectorAll('#axisRule .rule-btn').forEach(x=>x.classList.toggle('active',x.dataset.rule===axisState.rule));
+      $('#axisRadius').value=axisState.radius;
+      $('#axisRadiusVal').textContent=axisState.radius.toFixed(2);
+      $('#axisSetupDlg').classList.remove('hide');
+    });
+    grid.appendChild(card);
+  });
+}
+function drawAxis(){
+  const c=$('#axisCanvas'); if(!c)return; const ctx=c.getContext('2d');
+  const W=c.width,H=c.height,mL=24,mR=24,mT=50,mB=70;
+  const isDark=document.documentElement.getAttribute('data-theme')==='dark';
+  ctx.fillStyle=isDark?'#121927':'#ffffff'; ctx.fillRect(0,0,W,H);
+  const midY=(mT+(H-mB))/2;
+  const X=v=>mL+(v-AXMIN)/(AXMAX-AXMIN)*(W-mL-mR);
+  const zc=axisState.rule==='enter'?{rgb:'34,197,94',main:'#22c55e',soft:'#4ade80',glow:'74,222,128',dim:'20,120,60'}:{rgb:'239,68,68',main:'#ef4444',soft:'#ff6b6b',glow:'255,120,120',dim:'255,80,80'};
+  if(axisState.marks){
+    const x1=X(axisState.marks.low),x2=X(axisState.marks.high);
+    const g=ctx.createLinearGradient(x1,0,x2,0);
+    g.addColorStop(0,'rgba('+zc.rgb+',0)');
+    g.addColorStop(0.5,'rgba('+zc.rgb+',0.6)');
+    g.addColorStop(1,'rgba('+zc.rgb+',0)');
+    ctx.fillStyle=g; ctx.fillRect(x1,mT,x2-x1,H-mT-mB);
+    ctx.strokeStyle=zc.main; ctx.lineWidth=3;
+    ctx.beginPath(); ctx.moveTo(x1,midY); ctx.lineTo(x2,midY); ctx.stroke();
+  }
+  if(Date.now()<axisState.laserUntil && axisState.marks){
+    const x1=X(axisState.marks.low),x2=X(axisState.marks.high);
+    const cx=(x1+x2)/2;
+    const lg=ctx.createLinearGradient(0,mT,0,H-mB);
+    lg.addColorStop(0,'rgba('+zc.dim+',0.2)');
+    lg.addColorStop((midY-mT)/(H-mT-mB),'rgba('+zc.glow+',1)');
+    lg.addColorStop(1,'rgba('+zc.dim+',0.2)');
+    ctx.fillStyle=lg; ctx.fillRect(x1,mT,x2-x1,H-mT-mB);
+    ctx.strokeStyle='rgba(255,255,255,.95)'; ctx.lineWidth=4;
+    ctx.beginPath(); ctx.moveTo(cx,mT); ctx.lineTo(cx,H-mB); ctx.stroke();
+    ctx.strokeStyle=zc.main; ctx.lineWidth=6;
+    ctx.beginPath(); ctx.moveTo(x1,midY); ctx.lineTo(x2,midY); ctx.stroke();
+    ctx.strokeStyle=zc.soft; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(x1,midY-10); ctx.lineTo(x1,midY+10); ctx.moveTo(x2,midY-10); ctx.lineTo(x2,midY+10); ctx.stroke();
+  }
+  ctx.strokeStyle=isDark?'#3a465c':'#cbd2e0'; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.moveTo(X(AXMIN),midY); ctx.lineTo(X(AXMAX),midY); ctx.stroke();
+  ctx.fillStyle=isDark?'#97a1b5':'#9aa3b5'; ctx.font='12px system-ui'; ctx.textAlign='center';
+  for(let v=AXMIN;v<=AXMAX;v+=2){ const x=X(v); ctx.beginPath(); ctx.moveTo(x,midY-5); ctx.lineTo(x,midY+5); ctx.stroke(); ctx.fillText(String(v),x,midY+22); }
+  ctx.fillStyle=isDark?'#e7ebf3':'#1f2430'; ctx.beginPath(); ctx.arc(X(0),midY,3,0,Math.PI*2); ctx.fill();
+  const px=X(axisState.playerX);
+  ctx.strokeStyle='rgba(79,70,229,.35)'; ctx.lineWidth=1; ctx.setLineDash([4,4]);
+  ctx.beginPath(); ctx.moveTo(px,mT); ctx.lineTo(px,H-mB); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle='#4f46e5'; ctx.beginPath(); ctx.arc(px,midY,9,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle='#fff'; ctx.lineWidth=3; ctx.stroke();
+}
+function axisGameLoop(t){
+  if(!axisState.active)return;
+  if(axisState.phase==='play' && axisState.moveDir && t-axisState.lastMove>15){
+    axisState.playerX=clamp(axisState.playerX+axisState.moveDir*0.1,AXMIN,AXMAX);
+    axisState.lastMove=t; $('#axisPos').textContent=fmt(axisState.playerX);
+  }
+  drawAxis();
+  requestAnimationFrame(axisGameLoop);
+}
+function axisNextRound(){
+  axisState.round++;
+  const e=genAxisExpr(axisState.level.key);
+  axisState.formula=e.formula; axisState.res=e.res;
+  axisState.phase='play'; axisState.timeLeft=axisState.level.wait; axisState.moveDir=0;
+  axisState.marks=null; axisState.laserUntil=0;
+  $('#axisRound').textContent='第 '+axisState.round+' 轮';
+  $('#axisLevel').textContent=axisState.level.name;
+  $('#axisFormula').textContent=axisState.formula;
+  $('#axisPos').textContent=fmt(axisState.playerX);
+  $('#axisTimer').textContent=axisState.timeLeft.toFixed(1)+'s';
+  drawAxis();
+  clearInterval(axisState.timerId);
+  axisState.timerId=setInterval(()=>{
+    axisState.timeLeft-=0.1;
+    if(axisState.timeLeft<=0){ axisState.timeLeft=0; $('#axisTimer').textContent='0.0s'; clearInterval(axisState.timerId); axisResolveRound(); return; }
+    $('#axisTimer').textContent=axisState.timeLeft.toFixed(1)+'s';
+  },100);
+}
+function axisResolveRound(){
+  axisState.phase='rest'; clearInterval(axisState.timerId);
+  const r=axisState.roundRadius;
+  const inZone=Math.abs(axisState.playerX-axisState.res)<=r;
+  const hit = axisState.rule==='enter' ? !inZone : inZone;
+  let scoreRound=null;
+  if(!hit && axisState.rule==='enter'){
+    scoreRound=Math.max(0,Math.round(100*(1-Math.abs(axisState.playerX-axisState.res)/r)));
+    axisState.scoreSum+=scoreRound; axisState.scoreCount++;
+    const se=$('#axisScore');
+    if(se) se.textContent='评分 '+Math.round(axisState.scoreSum/axisState.scoreCount);
+  }
+  axisState.marks={low:axisState.res-r,high:axisState.res+r};
+  axisState.laserUntil=Date.now()+1000;
+  axisState.roundsData.push({round:axisState.round,formula:axisState.formula,res:axisState.res,playerX:axisState.playerX,dangerLow:axisState.res-r,dangerHigh:axisState.res+r,hit:hit,score:scoreRound});
+  drawAxis();
+  if(hit){
+    axisState.restId=setTimeout(()=>{ axisGameOver(); }, 1000);
+    return;
+  }
+  $('#axisTimer').textContent='安全 ✓';
+  axisState.restId=setTimeout(()=>{ if(axisState.active)axisNextRound(); }, axisState.level.rest*1000);
+}
+function axisGameOver(){
+  axisState.active=false; axisState.phase='over'; axisState.loopOn=false; clearInterval(axisState.timerId); clearTimeout(axisState.restId);
+  const survived=Math.max(0,axisState.round-1);
+  const entry={
+    mode:'axis', ts:Date.now(), score:survived, rounds:survived,
+    levelKey:axisState.level.key, levelName:axisState.level.name,
+    formula:axisState.formula, res:axisState.res,
+    radius:axisState.roundRadius, rule:axisState.rule,
+    avgScore:axisState.scoreCount?Math.round(axisState.scoreSum/axisState.scoreCount):null,
+    dangerLow:axisState.res-axisState.roundRadius, dangerHigh:axisState.res+axisState.roundRadius,
+    playerPos:axisState.playerX, survived:false,
+    roundsData:axisState.roundsData.slice()
+  };
+  post('/api/history',{entry:entry});
+  if(sfx&&sfx.timeout)sfx.timeout();
+  showAxisResult({rounds:survived,levelName:axisState.level.name,formula:axisState.formula,res:axisState.res,playerPos:axisState.playerX,radius:axisState.roundRadius,rule:axisState.rule,avgScore:axisState.scoreCount?Math.round(axisState.scoreSum/axisState.scoreCount):null,dangerLow:axisState.res-axisState.roundRadius,dangerHigh:axisState.res+axisState.roundRadius});
+}
+function axisInfoHtml(d){
+  const dl=d.dangerLow!==undefined?d.dangerLow:(d.res-(d.radius||1));
+  const dh=d.dangerHigh!==undefined?d.dangerHigh:(d.res+(d.radius||1));
+  const ruleTxt=d.rule==='enter'?'✅ 落入靶心':'❌ 避开险区';
+  const resTxt=d.survived?'主动退出':(d.rule==='enter'?'偏离靶心淘汰':'落入危险区淘汰');
+  return '<div class="row"><span>本题算式</span><b>'+escapeHtml(d.formula)+'</b></div>'+
+    '<div class="row"><span>答案</span><b>'+fmt(d.res)+'</b></div>'+
+    '<div class="row"><span>规则</span><b>'+ruleTxt+'</b></div>'+
+    (d.avgScore!=null?('<div class="row"><span>评分</span><b>'+d.avgScore+' 分</b></div>'):'')+
+    '<div class="row"><span>危险区</span><b>['+fmt(dl)+', '+fmt(dh)+']</b></div>'+
+    '<div class="row"><span>你的位置</span><b>'+fmt(d.playerPos)+'</b></div>'+
+    '<div class="row"><span>结果</span><b style="color:'+(d.survived?'var(--green)':'var(--red)')+'">'+resTxt+'</b></div>';
+}
+function axisDetailHtml(h){
+  let s='<div class="axis-r-info">'+axisInfoHtml(h)+'</div>';
+  if(Array.isArray(h.roundsData)&&h.roundsData.length){
+    s+='<div class="axis-r-rounds"><h4>每轮详情（共 '+h.roundsData.length+' 轮）</h4>';
+    s+=h.roundsData.map(r=>{
+      const id='ar-'+h.ts+'-'+r.round;
+      return '<div class="axis-r-row">'+
+        '<div class="axis-r-row-head"><span class="axis-r-num">#'+r.round+'</span><b>'+escapeHtml(r.formula)+'</b>'+
+          (r.hit?'<span class="badge b-out">'+(h.rule==='enter'?'偏移':'命中')+'</span>':'<span class="badge b-ok">安全</span>')+
+          '<span class="axis-r-row-pos">你: <b>'+fmt(r.playerX)+'</b> · 危险: ['+fmt(r.dangerLow)+', '+fmt(r.dangerHigh)+']</span>'+
+        '</div>'+
+        '<canvas class="axis-r-mini" id="'+id+'" width="320" height="50"></canvas>'+
+      '</div>';
+    }).join('');
+    s+='</div>';
+  }
+  return s;
+}
+function drawAxisMini(canvas,r,rule){
+  const zc=(rule||'avoid')==='enter'?{rgb:'34,197,94',main:'#22c55e'}:{rgb:'239,68,68',main:'#ef4444'};
+  const ctx=canvas.getContext('2d');
+  const W=canvas.width,H=canvas.height;
+  const isDark=document.documentElement.getAttribute('data-theme')==='dark';
+  ctx.fillStyle=isDark?'#121927':'#fff'; ctx.fillRect(0,0,W,H);
+  const X=v=>(v-AXMIN)/(AXMAX-AXMIN)*W;
+  const midY=H/2;
+  ctx.strokeStyle=isDark?'#3a465c':'#cbd2e0'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(0,midY); ctx.lineTo(W,midY); ctx.stroke();
+  if(r.dangerLow!==undefined){
+    const x1=Math.max(0,X(r.dangerLow)),x2=Math.min(W,X(r.dangerHigh));
+    if(x2>0 && x1<W){
+      const g=ctx.createLinearGradient(x1,0,x2,0);
+      g.addColorStop(0,'rgba('+zc.rgb+',0)');
+      g.addColorStop(0.5,'rgba('+zc.rgb+',0.5)');
+      g.addColorStop(1,'rgba('+zc.rgb+',0)');
+      ctx.fillStyle=g; ctx.fillRect(x1,midY-7,x2-x1,14);
+      ctx.strokeStyle=zc.main; ctx.lineWidth=1.5;
+      ctx.beginPath(); ctx.moveTo(X(r.dangerLow),midY); ctx.lineTo(X(r.dangerHigh),midY); ctx.stroke();
+    }
+  }
+  const px=X(r.playerX);
+  if(px>=-2 && px<=W+2){
+    ctx.fillStyle='#4f46e5'; ctx.beginPath(); ctx.arc(px,midY,4,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle='#fff'; ctx.lineWidth=1.5; ctx.stroke();
+  }
+}
+function openAxisDetail(h){
+  $('#axisRTitle').textContent='点之趋安 · 历史对局';
+  $('#axisRSub').textContent='难度 '+h.levelName+' · 坚持 '+(h.rounds||0)+' 轮 · '+timeStr(h.ts);
+  $('#axisRInfo').innerHTML=axisDetailHtml(h);
+  $('#axisRetryBtn').classList.add('hide');
+  $('#axisResult').classList.remove('hide');
+  if(Array.isArray(h.roundsData)){
+    h.roundsData.forEach(r=>{
+      const c=document.getElementById('ar-'+h.ts+'-'+r.round);
+      if(c) drawAxisMini(c,r,h.rule);
+    });
+  }
+}
+function showAxisResult(d){
+  $('#axisRTitle').textContent='被淘汰！';
+  $('#axisRSub').textContent='难度 '+d.levelName+' · 坚持 '+d.rounds+' 轮'+(d.avgScore!=null?(' · 评分 '+d.avgScore):'');
+  $('#axisRInfo').innerHTML=axisInfoHtml(d);
+  $('#axisRetryBtn').classList.remove('hide');
+  $('#axisResult').classList.remove('hide');
+}
+function exitAxis(){
+  if(axisState.active && axisState.phase!=='over' && axisState.roundsData.length){
+    const survived=axisState.roundsData.filter(r=>!r.hit).length;
+    const entry={
+      mode:'axis', ts:Date.now(), score:survived, rounds:survived,
+      levelKey:axisState.level.key, levelName:axisState.level.name,
+      formula:axisState.formula, res:axisState.res,
+      radius:axisState.roundRadius, rule:axisState.rule,
+      avgScore:axisState.scoreCount?Math.round(axisState.scoreSum/axisState.scoreCount):null,
+      dangerLow:axisState.res-axisState.roundRadius, dangerHigh:axisState.res+axisState.roundRadius,
+      playerPos:axisState.playerX, survived:true,
+      roundsData:axisState.roundsData.slice()
+    };
+    post('/api/history',{entry:entry});
+    toast('已保存本局进度（坚持 '+survived+' 轮）');
+  }
+  axisState.active=false; axisState.phase='idle'; axisState.moveDir=0; axisState.loopOn=false;
+  clearInterval(axisState.timerId); clearTimeout(axisState.restId);
+  $('#axisGame').classList.add('hide');
+  $('#axisMgrid').classList.remove('hide');
+  $('#axisResult').classList.add('hide');
+}
+function startAxis(levelKey){
+  axisState.active=true; axisState.level=AXIS_LEVELS[levelKey]; axisState.round=0; axisState.moveDir=0;
+  axisState.playerX=iRand(AXMIN,AXMAX);
+  axisState.radius=parseFloat($('#axisRadius').value);
+  axisState.roundsData=[];
+  axisState.roundRadius=axisState.radius; axisState.marks=null; axisState.laserUntil=0;
+  axisState.scoreSum=0; axisState.scoreCount=0;
+  $('#axisRoundRadius').textContent=axisState.roundRadius.toFixed(2);
+  $('#axisRuleTag').textContent=axisState.rule==='enter'?'✅ 落入靶心':'❌ 避开险区';
+  const se=$('#axisScore');
+  if(se){ se.classList.toggle('hide',axisState.rule!=='enter'); se.textContent=''; }
+  $('#axisMgrid').classList.add('hide');
+  $('#axisGame').classList.remove('hide');
+  $('#axisResult').classList.add('hide');
+  if(!axisState.loopOn){ axisState.loopOn=true; requestAnimationFrame(axisGameLoop); }
+  axisNextRound();
+}
+document.addEventListener('keydown',e=>{
+  if(!axisState.active||axisState.phase!=='play')return;
+  if(e.key==='ArrowLeft'){ axisState.moveDir=-1; e.preventDefault(); }
+  else if(e.key==='ArrowRight'){ axisState.moveDir=1; e.preventDefault(); }
+});
+document.addEventListener('keyup',e=>{
+  if(e.key==='ArrowLeft'&&axisState.moveDir===-1)axisState.moveDir=0;
+  else if(e.key==='ArrowRight'&&axisState.moveDir===1)axisState.moveDir=0;
+});
+$('#axisQuitBtn').addEventListener('click',exitAxis);
+$('#axisRetryBtn').addEventListener('click',()=>{ $('#axisResult').classList.add('hide'); startAxis(axisState.level?axisState.level.key:'easy'); });
+$('#axisMenuBtn').addEventListener('click',()=>{ $('#axisResult').classList.add('hide'); exitAxis(); });
+$('#axisRadius').addEventListener('input',e=>{
+  const v=parseFloat(e.target.value);
+  axisState.radius=v;
+  $('#axisRadiusVal').textContent=v.toFixed(2);
+});
+$('#axisStartBtn').addEventListener('click',()=>{
+  $('#axisSetupDlg').classList.add('hide');
+  startAxis(pendingAxisLevel||'easy');
+});
+$('#axisCancelBtn').addEventListener('click',()=>{ $('#axisSetupDlg').classList.add('hide'); });
+document.querySelectorAll('#axisRule .rule-btn').forEach(b=>{
+  b.addEventListener('click',()=>{
+    document.querySelectorAll('#axisRule .rule-btn').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active');
+    axisState.rule=b.dataset.rule;
+  });
+});
+renderAxisMgrid();
 })();

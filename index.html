@@ -8,6 +8,10 @@
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
+<div class="entry" id="entryDlg">
+  <h2 class="entry-title">函迹<span class="entry-en">· FuncTrace</span></h2>
+  <div class="entry-sub">点击进入游戏</div>
+</div>
 <div id="debugBar" class="hide">
   <div class="dbg-head">
     <span class="dbg-title">🔧 调试</span>
@@ -122,14 +126,20 @@
     <div class="home-hero">
       <h2 class="home-title">函迹<span class="hero-en">· FuncTrace</span></h2>
       <div class="hero-divider"></div>
-      <div class="sub">每局在顶部给出一个函数表达式，限时内在坐标系上放置你认为位于曲线上的点，系统按每个点到真实曲线的最近距离打分。</div>
+      <div class="sub">以点描线，读懂函数；以动趋安，避开险区。</div>
     </div>
     <div class="tabs">
-      <button class="tab active" data-tab="play">开始游戏</button>
+      <button class="tab active" data-tab="play">点之描函</button>
+      <button class="tab" data-tab="axis">点之趋安</button>
       <button class="tab" data-tab="history">历史记录 <span class="tab-count" id="histCount">0</span></button>
       <button class="tab" data-tab="settings">设置</button>
     </div>
     <div id="tabPlay">
+      <div class="axis-intro">
+        <h3>点之描函 <span class="hero-en">Function Trace</span></h3>
+        <div class="hero-divider"></div>
+        <div class="sub">每局在顶部给出一个函数表达式，限时内在坐标系上放置你认为位于曲线上的点，系统按每个点到真实曲线的最近距离打分。</div>
+      </div>
       <div class="mgrid" id="mgrid"></div>
       <div class="rules">
         <b>怎么玩：</b><br>
@@ -137,6 +147,38 @@
         ② 倒计时结束前放置规定数量的点，尽量落在曲线上（点空白放点，点已有小点可移除）<br>
         ③ 放满点数自动判定，也可随时点「提交判定」<br>
         ④ 判定后先在坐标系展示真实曲线（1 秒），再给出每个点的最近距离与得分
+      </div>
+    </div>
+    <div id="tabAxis" class="hide">
+      <div class="axis-intro">
+        <h3>点之趋安 <span class="hero-en">Axis Dodge</span></h3>
+        <div class="hero-divider"></div>
+        <div class="sub">看到算式，快速心算答案。数轴上的「危险区」不会显示——倒计时结束前，把点移到正确的位置：避开险区要躲开危险区，落入靶心要停进靶心。判断失误，激光落下，出局。</div>
+      </div>
+      <div class="mgrid" id="axisMgrid"></div>
+      <div class="rules">
+        <b>怎么玩：</b><br>
+        ① 点难度卡片，在弹窗中选好规则、拖好危险区半径（±1~2），进入后上方给出一道算式<br>
+        ② 用 ← → 方向键移动数轴上的你（每步 0.1 格，可长按连续移动）<br>
+        ③ 倒计时结束前把点放到正确位置：避开险区＝移出危险区；落入靶心＝停进危险区<br>
+        ④ 判断正确则休息几秒进入下一轮；判断失误则本局结束，记录你坚持的轮数
+      </div>
+      <div id="axisGame" class="hide">
+        <div class="axis-hud">
+          <span class="ah-round" id="axisRound">第 1 轮</span>
+          <span class="ah-level" id="axisLevel">入门</span>
+          <span class="ah-timer" id="axisTimer">6.0s</span>
+          <span class="ah-rule-tag" id="axisRuleTag">❌ 避开险区</span>
+          <span class="ah-score hide" id="axisScore"></span>
+          <span class="ah-radius" title="本局锁定半径，开局时已确定">±<b id="axisRoundRadius">1.00</b></span>
+        </div>
+        <div class="axis-formula" id="axisFormula">3 × 4 + 2 = ?</div>
+        <canvas id="axisCanvas" class="axis-canvas" width="720" height="300"></canvas>
+        <div class="axis-pos">你的位置：x = <b id="axisPos">0</b></div>
+        <div class="axis-tip">← → 方向键移动</div>
+        <div class="axis-btns">
+          <button class="btn btn-ghost" id="axisQuitBtn">✕ 退出本局</button>
+        </div>
       </div>
     </div>
     <div id="tabHistory" class="hide">
@@ -160,6 +202,29 @@
           </div>
           <label class="switch">
             <input type="checkbox" id="darkToggle">
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+      <div class="card">
+        <h3>声音</h3>
+        <div class="set-row">
+          <div>
+            <div class="set-name">背景音乐</div>
+            <div class="set-desc">播放 / 暂停背景音乐，选择后自动保存</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="bgmToggle">
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="set-row">
+          <div>
+            <div class="set-name">音效</div>
+            <div class="set-desc">按钮点击等游戏音效，选择后自动保存</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="sfxToggle">
             <span class="slider"></span>
           </label>
         </div>
@@ -208,6 +273,18 @@
   </div>
 </div>
 
+<div class="overlay hide" id="axisResult">
+  <div class="modal">
+    <h2 id="axisRTitle">被淘汰！</h2>
+    <div class="sub" id="axisRSub"></div>
+    <div class="axis-r-info" id="axisRInfo"></div>
+    <div class="btns">
+      <button class="btn btn-primary" id="axisRetryBtn">⟳ 再来一局</button>
+      <button class="btn btn-ghost" id="axisMenuBtn">返回主菜单</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay hide" id="graphDlg">
   <div class="modal graph-modal">
     <div class="graph-head">
@@ -221,6 +298,30 @@
     <div class="formula"><span class="sw" id="gSwatch"></span><span id="gFormula"></span></div>
     <div class="graph-stage"><canvas id="graphCanvas"></canvas></div>
     <div class="graph-hint">滚动滑轮缩放视图（以光标为中心），点「复位」回到完整视图</div>
+  </div>
+</div>
+
+<div class="overlay hide" id="axisSetupDlg">
+  <div class="modal" style="max-width:460px">
+    <h2 id="axisSetupTitle">选择难度</h2>
+    <p class="sub" id="axisSetupLevel">入门</p>
+    <div class="axis-setup-dlg">
+      <div class="as-row">
+        <span class="as-label">规则</span>
+        <span class="ah-rule" id="axisRule">
+          <button class="rule-btn active" data-rule="avoid">避开险区</button>
+          <button class="rule-btn" data-rule="enter">落入靶心</button>
+        </span>
+      </div>
+      <div class="as-row">
+        <span class="as-label">危险区半径</span>
+        <span class="ah-radius" title="开局时确定，进入后本局不变">±<b id="axisRadiusVal">1.00</b><input type="range" id="axisRadius" min="1" max="2" step="0.05" value="1"></span>
+      </div>
+    </div>
+    <div class="btns">
+      <button class="btn btn-primary" id="axisStartBtn">开始</button>
+      <button class="btn btn-ghost" id="axisCancelBtn">取消</button>
+    </div>
   </div>
 </div>
 
@@ -255,6 +356,8 @@
 </div>
 
 <div id="toast"></div>
+<audio id="bgm" src="bgm.mp3" loop preload="auto"></audio>
+<audio id="clickSnd" src="click.mp3" preload="auto"></audio>
 <script src="js/app.js"></script>
 </body>
 </html>
