@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>函迹 · FuncTrace</title>
+<link rel="icon" href="img/logo.png">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="debugBar" class="hide">
+  <div class="dbg-head">
+    <span class="dbg-title">🔧 调试</span>
+    <span class="dbg-hint">按 Ctrl+Shift+D 显示 / 隐藏</span>
+    <button class="dbg-exit" id="dbgExitBtn" title="退出调试模式">✕ 退出</button>
+  </div>
+  <div class="dbg-body">
+    <div class="dbg-row">
+      <span class="dbg-label">函数表达式</span>
+      <input id="dbgInput" type="text" placeholder="例如 2*x+3、x^2-1、sin(x)、1.2*|x-2|-1、2*exp(0.15*x)-3" spellcheck="false">
+      <button class="btn btn-primary small" id="dbgApplyBtn">应用</button>
+      <button class="btn btn-ghost small" id="dbgRandomBtn">🎲 随机函数</button>
+    </div>
+    <div class="dbg-row">
+      <span class="dbg-label">模板</span>
+      <button class="btn btn-ghost small" data-tpl="linear">一次</button>
+      <button class="btn btn-ghost small" data-tpl="quad">二次</button>
+      <button class="btn btn-ghost small" data-tpl="abs">绝对值</button>
+      <button class="btn btn-ghost small" data-tpl="cubic">三次</button>
+      <button class="btn btn-ghost small" data-tpl="sine">正弦</button>
+      <button class="btn btn-ghost small" data-tpl="exp">指数</button>
+    </div>
+    <div class="dbg-row">
+      <button class="btn btn-primary small" id="dbgSaveBtn">💾 保存本次调试</button>
+      <button class="btn btn-ghost small" id="dbgListBtn">📋 调试记录 <span class="tab-count" id="dbgCount">0</span></button>
+      <button class="btn btn-danger small" id="dbgClearBtn">🗑 清空记录</button>
+      <button class="btn btn-ghost small" id="dbgExportBtn">⬇ 导出</button>
+      <button class="btn btn-ghost small" id="dbgImportBtn">⬆ 导入</button>
+      <input type="file" id="dbgImportFile" accept=".json,application/json" class="hide">
+      <span class="dbg-status" id="dbgStatus"></span>
+    </div>
+    <div class="dbg-main">
+      <div class="dbg-stage">
+        <div class="dbg-stage-head">
+          <span class="g-zoom" id="dbgZoom">×1.00</span>
+          <div class="dbg-stage-btns">
+            <button class="btn btn-ghost small" id="dbgClearPtsBtn" title="清除画布上放置的所有点">🗑 清空点</button>
+            <button class="btn btn-ghost small" id="dbgResetBtn">⟳ 复位</button>
+          </div>
+        </div>
+        <div class="graph-stage"><canvas id="dbgCanvas"></canvas></div>
+        <div class="graph-hint">点击画布放置点（点中已有点可移除），滚动滑轮缩放</div>
+      </div>
+      <div class="dbg-info">
+        <div class="card"><h3>当前函数</h3><div id="dbgExpr" style="font-family:ui-monospace,Consolas,Menlo,monospace;font-size:13px;font-weight:700;word-break:break-all"></div></div>
+        <div class="card"><h3>放置的点</h3><div id="dbgPoints" style="font-size:12px;line-height:1.9;max-height:230px;overflow:auto"></div></div>
+        <div class="card"><h3>合计得分</h3><div id="dbgScore" style="font-size:26px;font-weight:800;color:var(--accent);font-variant-numeric:tabular-nums"></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="app">
+  <div id="gameView" class="hide">
+  <header>
+    <div class="logo"><img class="logo-img" src="img/logo.png" alt="FuncTrace"><span class="logo-cn">函迹</span><span class="en">· FuncTrace</span><span class="tag">把点放到函数曲线上</span></div>
+    <div class="stats">
+      <div class="chip">局数 <b id="statRound">0</b></div>
+      <div class="chip">累计总分 <b id="statTotal">0</b></div>
+      <div class="chip">历史最高单局 <b id="statBest">0</b></div>
+    </div>
+  </header>
+
+  <nav class="levels" id="levels">
+    <button class="lvl" data-l="easy">入门 <small>一次函数</small></button>
+    <button class="lvl" data-l="normal">进阶 <small>二次 / 绝对值</small></button>
+    <button class="lvl" data-l="hard">专家 <small>三次 / 正弦 / 指数</small></button>
+    <button class="lvl" data-l="mix">混合 <small>全部类型</small></button>
+    <button class="lvl" id="muteBtn" title="声音开关">🔊</button>
+  </nav>
+
+  <main>
+    <section class="board">
+      <div class="formula-banner hide" id="formulaBanner">
+        <span class="fb-label">本题函数</span>
+        <span class="fb-body"><i class="fb-dot" id="fbDot"></i><span id="fbFormula">—</span></span>
+      </div>
+      <div class="stage"><canvas id="cv"></canvas></div>
+    </section>
+    <aside class="panel">
+      <div class="card">
+        <h3>本局信息</h3>
+        <div class="info-row"><span class="k">难度</span><span class="v" id="hintLevel">—</span></div>
+        <div class="info-row"><span class="k">函数类型</span><span class="v" id="hintType">—</span></div>
+        <div class="info-row"><span class="k">剩余时间</span><span class="v" id="timeVal">—</span></div>
+        <div class="timebar"><i id="timeBar"></i></div>
+        <div class="info-row" style="margin-top:8px"><span class="k">已放置点</span><span class="v dots" id="dots">—</span></div>
+      </div>
+      <div class="card">
+        <div class="actions">
+          <button class="btn btn-ghost" id="undoBtn" title="移除最后放置的点">↩ 撤销上一点</button>
+          <button class="btn btn-danger" id="retryBtn" title="重新本局（同一条曲线、重新计时）">⟳ 重试本局</button>
+          <button class="btn btn-primary" id="submitBtn" title="提前提交判定">✓ 提交判定</button>
+          <button class="btn btn-danger" id="exitBtn" title="退出本局，返回主菜单（本关进度不保存）">⏏ 退出本局</button>
+        </div>
+      </div>
+      <div class="card rules">
+        <h3>玩法 & 计分</h3>
+        每局在顶部醒目位置给出<b>函数表达式</b>，限时内在坐标系上放置规定数量的点，让它们尽量落在曲线上。<br>
+        · 单点得分 = (100/N) × max(0, 1 − 最近距离/4)<br>
+        · 时间奖励 = 10 × 剩余时间占比<br>
+        · 距离越近分越高，本局满分 <b>100</b><br>
+        提示：点中已有小点可移除，点空白处新增。
+      </div>
+    </aside>
+  </main>
+  </div>
+</div>
+
+<div id="homeView" class="home-page">
+  <div class="home-card">
+    <div class="home-hero">
+      <h2 class="home-title">函迹<span class="hero-en">· FuncTrace</span></h2>
+      <div class="hero-divider"></div>
+      <div class="sub">每局在顶部给出一个函数表达式，限时内在坐标系上放置你认为位于曲线上的点，系统按每个点到真实曲线的最近距离打分。</div>
+    </div>
+    <div class="tabs">
+      <button class="tab active" data-tab="play">开始游戏</button>
+      <button class="tab" data-tab="history">历史记录 <span class="tab-count" id="histCount">0</span></button>
+      <button class="tab" data-tab="settings">设置</button>
+    </div>
+    <div id="tabPlay">
+      <div class="mgrid" id="mgrid"></div>
+      <div class="rules">
+        <b>怎么玩：</b><br>
+        ① 选择难度开始，顶部醒目位置给出本题函数表达式<br>
+        ② 倒计时结束前放置规定数量的点，尽量落在曲线上（点空白放点，点已有小点可移除）<br>
+        ③ 放满点数自动判定，也可随时点「提交判定」<br>
+        ④ 判定后先在坐标系展示真实曲线（1 秒），再给出每个点的最近距离与得分
+      </div>
+    </div>
+    <div id="tabHistory" class="hide">
+      <div class="hist-stats" id="histStats"></div>
+      <div class="hist-actions">
+        <button class="btn btn-ghost small" id="exportBtn" title="把历史记录下载为 JSON 文件备份">⬇ 导出记录</button>
+        <button class="btn btn-ghost small" id="importBtn" title="从 JSON 文件恢复历史记录">⬆ 导入记录</button>
+        <button class="btn btn-danger small" id="clearHistBtn">🗑 清空历史</button>
+        <input type="file" id="importFile" accept=".json,application/json" class="hide">
+      </div>
+      <div class="hist-hint">提示：导出 JSON 文件可备份记录；清除数据或换设备后，用「导入记录」即可恢复。</div>
+      <div class="hist-list" id="histList"></div>
+    </div>
+    <div id="tabSettings" class="hide">
+      <div class="card">
+        <h3>外观</h3>
+        <div class="set-row">
+          <div>
+            <div class="set-name">深色模式</div>
+            <div class="set-desc">切换浅色 / 深色界面主题，选择后立即生效并自动保存</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="darkToggle">
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+      <div class="card">
+        <h3>数据说明</h3>
+        <div class="set-row">
+          <div>
+            <div class="set-name">本地存储</div>
+            <div class="set-desc">历史记录、调试记录、最高分与主题设置均保存在本机浏览器 localStorage 中，可用各页面的导入 / 导出功能备份迁移</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="overlay hide" id="result">
+  <div class="modal">
+    <h2 id="rTitle">判定结果</h2>
+    <div class="sub" id="rRound"></div>
+    <div class="score-wrap">
+      <div class="ring">
+        <svg width="120" height="120" viewBox="0 0 120 120">
+          <circle cx="60" cy="60" r="52" fill="none" stroke="#eef0f6" stroke-width="12"/>
+          <circle id="ringBar" cx="60" cy="60" r="52" fill="none" stroke="url(#rg)" stroke-width="12" stroke-linecap="round" stroke-dasharray="326.73" stroke-dashoffset="326.73" style="transition:stroke-dashoffset .05s linear"/>
+          <defs><linearGradient id="rg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4f46e5"/><stop offset="1" stop-color="#8b5cf6"/></linearGradient></defs>
+        </svg>
+        <div class="num"><b id="rNum">0</b><span>满分 100</span></div>
+      </div>
+      <div style="flex:1">
+        <div class="formula"><span class="sw" id="rSwatch"></span><span id="rFormula"></span></div>
+        <div class="badge b-perfect hide" id="rPerfect" style="margin-bottom:8px">🎉 完美命中！</div>
+        <div id="rBonus" style="font-size:13px;color:var(--sub)"></div>
+      </div>
+    </div>
+    <div id="rTableWrap"></div>
+    <div class="rowsum" id="rSum"></div>
+    <div class="btns">
+      <button class="btn btn-ghost" id="retryBtn2">⟳ 重试本局</button>
+      <button class="btn btn-ghost hide" id="histGraphBtn" title="查看该函数的图像">📉 查看图像</button>
+      <button class="btn btn-ghost hide" id="histCloseBtn">关闭</button>
+      <button class="btn btn-primary" id="nextBtn">下一局 →</button>
+    </div>
+    <button class="link-btn" id="menuBtn">返回主菜单</button>
+  </div>
+</div>
+
+<div class="overlay hide" id="graphDlg">
+  <div class="modal graph-modal">
+    <div class="graph-head">
+      <h2>📉 历史图像 · 第 <span id="gRound">0</span> 局</h2>
+      <div class="graph-tools">
+        <span class="g-zoom" id="gZoom">×1.00</span>
+        <button class="btn btn-ghost small" id="gResetBtn" title="恢复为完整视图">⟳ 复位</button>
+        <button class="btn btn-ghost small" id="graphCloseBtn">关闭</button>
+      </div>
+    </div>
+    <div class="formula"><span class="sw" id="gSwatch"></span><span id="gFormula"></span></div>
+    <div class="graph-stage"><canvas id="graphCanvas"></canvas></div>
+    <div class="graph-hint">滚动滑轮缩放视图（以光标为中心），点「复位」回到完整视图</div>
+  </div>
+</div>
+
+<div class="overlay hide" id="timeDlg">
+  <div class="modal" style="max-width:460px">
+    <h2>选择时间</h2>
+    <p class="sub">为「<b id="timeDlgLevel">—</b>」难度挑选时限，时间越短越有挑战。</p>
+    <div class="tier-grid" id="tierGrid"></div>
+    <div class="btns"><button class="btn btn-ghost" id="timeCancel">取消</button></div>
+  </div>
+</div>
+
+<div class="overlay hide" id="dbgListDlg">
+  <div class="modal home-modal">
+    <div class="graph-head">
+      <h2>📋 调试记录</h2>
+      <button class="btn btn-ghost small" id="dbgListClose">关闭</button>
+    </div>
+    <div class="hist-list" id="dbgList"></div>
+  </div>
+</div>
+
+<div class="overlay hide" id="confirmDlg">
+  <div class="modal confirm-modal">
+    <h2>⏏ 退出本局？</h2>
+    <div class="sub">是否退出？这将无法保存这一关的进度。</div>
+    <div class="btns">
+      <button class="btn btn-ghost" id="confirmNo">继续游戏</button>
+      <button class="btn btn-danger" id="confirmYes">确认退出</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+<script src="js/app.js"></script>
+</body>
+</html>
